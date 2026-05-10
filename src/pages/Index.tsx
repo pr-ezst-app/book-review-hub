@@ -1,82 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, createContext, useContext } from "react";
 import Icon from "@/components/ui/icon";
+
+const AUTH_URL = "https://functions.poehali.dev/0ef8e7e8-8cdf-4a70-b2e3-78fd321c1078";
+const REVIEWS_URL = "https://functions.poehali.dev/f09d4dcc-ba62-4147-8c6c-61452b6bcd4f";
+
+type AuthUser = { token: string; user_id: number; username: string };
+const AuthCtx = createContext<{ user: AuthUser | null; setUser: (u: AuthUser | null) => void }>({ user: null, setUser: () => {} });
 
 const HERO_IMG = "https://cdn.ezst.app/projects/93ac1fbb-3706-4031-ab6e-f9de317db349/files/a18c7798-57ce-41ea-bffb-1a47a56351f2.jpg";
 
-const SAMPLE_REVIEWS = [
-  {
-    id: 1,
-    title: "The Midnight Library",
-    author: "Matt Haig",
-    reviewer: "rosereads",
-    avatar: "🌸",
-    rating: 5,
-    text: "This book completely shattered me in the most beautiful way. Every page felt like a warm hug and a gentle reminder that life is full of infinite possibilities.",
-    genre: "Fiction",
-    date: "May 8, 2026",
-    likes: 42,
-  },
-  {
-    id: 2,
-    title: "Beach Read",
-    author: "Emily Henry",
-    reviewer: "bookish.luna",
-    avatar: "🌺",
-    rating: 4,
-    text: "The banter between the leads is chef's kiss. A perfect enemies-to-lovers story wrapped in so much heart. Couldn't put it down!",
-    genre: "Romance",
-    date: "May 5, 2026",
-    likes: 38,
-  },
-  {
-    id: 3,
-    title: "A Court of Thorns and Roses",
-    author: "Sarah J. Maas",
-    reviewer: "fairytalevibes",
-    avatar: "✨",
-    rating: 5,
-    text: "I was NOT prepared for how obsessed I'd become. The world-building is stunning and Tamlin is complicated. Immediately started book two.",
-    genre: "Fantasy",
-    date: "May 2, 2026",
-    likes: 61,
-  },
-  {
-    id: 4,
-    title: "People We Meet on Vacation",
-    author: "Emily Henry",
-    reviewer: "softpages",
-    avatar: "🦋",
-    rating: 4,
-    text: "Nostalgic, tender, and utterly romantic. The dual timeline kept me hooked. Perfect summer read that made me want to book a trip!",
-    genre: "Romance",
-    date: "April 29, 2026",
-    likes: 29,
-  },
-  {
-    id: 5,
-    title: "The Name of the Wind",
-    author: "Patrick Rothfuss",
-    reviewer: "inkdreamer",
-    avatar: "🌙",
-    rating: 5,
-    text: "Absolute masterpiece of fantasy. Kvothe's voice is so vivid and magnetic. This redefined what I thought storytelling could be.",
-    genre: "Fantasy",
-    date: "April 26, 2026",
-    likes: 55,
-  },
-  {
-    id: 6,
-    title: "Daisy Jones & The Six",
-    author: "Taylor Jenkins Reid",
-    reviewer: "velvetpages",
-    avatar: "🌹",
-    rating: 5,
-    text: "Written as oral history interviews and it WORKS. I felt like I was reading a real rockstar memoir. Listened to the audiobook after — even better.",
-    genre: "Historical Fiction",
-    date: "April 20, 2026",
-    likes: 47,
-  },
-];
 
 const GENRES = ["All", "Fiction", "Romance", "Fantasy", "Historical Fiction", "Thriller", "Non-Fiction"];
 
@@ -117,8 +49,33 @@ function StarRating({
   );
 }
 
-function ReviewCard({ review }: { review: (typeof SAMPLE_REVIEWS)[0] }) {
+type Review = {
+  id: number; title: string; author: string; genre: string;
+  rating: number; text: string; likes: number; date: string;
+  reviewer: string; avatar: string; user_id: number;
+};
+
+function ReviewCard({ review, onDelete }: { review: Review; onDelete?: (id: number) => void }) {
+  const { user } = useContext(AuthCtx);
   const [liked, setLiked] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const isOwner = user && user.user_id === review.user_id;
+
+  const handleDelete = async () => {
+    if (!user || !window.confirm("Delete this review? This can't be undone 💔")) return;
+    setDeleting(true);
+    const res = await fetch(`${REVIEWS_URL}/${review.id}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${user.token}` },
+    });
+    if (res.ok) {
+      onDelete?.(review.id);
+    } else {
+      alert("Something went wrong — couldn't delete the review.");
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="glass-card rounded-2xl p-6 hover-scale animate-fade-in flex flex-col gap-3">
       <div className="flex items-start justify-between gap-2">
@@ -159,20 +116,37 @@ function ReviewCard({ review }: { review: (typeof SAMPLE_REVIEWS)[0] }) {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setLiked(!liked)}
-          className="flex items-center gap-1.5 text-sm transition-all hover:scale-110"
-          style={{ color: liked ? "#c2185b" : "#d4a0b0" }}
-        >
-          <span className="text-base">{liked ? "💖" : "🤍"}</span>
-          <span className="font-lato">{liked ? review.likes + 1 : review.likes}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {isOwner && onDelete && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-lato font-semibold transition-all hover:scale-105"
+              style={{ background: "#fce4ec", color: "#c2185b", opacity: deleting ? 0.5 : 1 }}
+            >
+              <Icon name="Trash2" size={12} />
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          )}
+          <button
+            onClick={() => setLiked(!liked)}
+            className="flex items-center gap-1.5 text-sm transition-all hover:scale-110"
+            style={{ color: liked ? "#c2185b" : "#d4a0b0" }}
+          >
+            <span className="text-base">{liked ? "💖" : "🤍"}</span>
+            <span className="font-lato">{liked ? review.likes + 1 : review.likes}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 function HomePage({ setPage }: { setPage: (p: string) => void }) {
+  const [latestReviews, setLatestReviews] = useState<Review[]>([]);
+  useEffect(() => {
+    fetch(REVIEWS_URL).then((r) => r.json()).then((d) => setLatestReviews(d.slice(0, 3))).catch(() => {});
+  }, []);
   return (
     <div className="flex flex-col gap-0">
       {/* Hero */}
@@ -304,7 +278,9 @@ function HomePage({ setPage }: { setPage: (p: string) => void }) {
             </h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6 mb-10">
-            {SAMPLE_REVIEWS.slice(0, 3).map((r) => (
+            {latestReviews.length === 0 ? (
+              <div className="md:col-span-3 text-center py-8 text-4xl animate-float">📖</div>
+            ) : latestReviews.map((r) => (
               <ReviewCard key={r.id} review={r} />
             ))}
           </div>
@@ -361,37 +337,64 @@ function HomePage({ setPage }: { setPage: (p: string) => void }) {
 }
 
 function BrowsePage() {
+  const { user } = useContext(AuthCtx);
   const [selectedGenre, setSelectedGenre] = useState("All");
   const [sortBy, setSortBy] = useState("newest");
   const [showForm, setShowForm] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [newReview, setNewReview] = useState({
-    title: "",
-    author: "",
-    text: "",
-    rating: 0,
-    genre: "Fiction",
+    title: "", author: "", text: "", rating: 0, genre: "Fiction",
   });
 
-  const filtered =
-    selectedGenre === "All"
-      ? SAMPLE_REVIEWS
-      : SAMPLE_REVIEWS.filter((r) => r.genre === selectedGenre);
+  useEffect(() => {
+    fetch(REVIEWS_URL)
+      .then((r) => r.json())
+      .then((data) => { setReviews(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleDelete = (id: number) => setReviews((prev) => prev.filter((r) => r.id !== id));
+
+  const handleSubmit = async () => {
+    if (!user) { setError("Please sign in to post a review"); return; }
+    setError("");
+    setSubmitting(true);
+    const res = await fetch(REVIEWS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${user.token}` },
+      body: JSON.stringify(newReview),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setReviews((prev) => [data, ...prev]);
+      setNewReview({ title: "", author: "", text: "", rating: 0, genre: "Fiction" });
+      setShowForm(false);
+    } else {
+      setError(data.error || "Something went wrong");
+    }
+    setSubmitting(false);
+  };
+
+  const filtered = selectedGenre === "All"
+    ? reviews
+    : reviews.filter((r) => r.genre === selectedGenre);
+
+  const sorted = [...filtered].sort((a, b) => {
+    if (sortBy === "top") return b.rating - a.rating;
+    if (sortBy === "liked") return b.likes - a.likes;
+    return 0;
+  });
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
       <div className="text-center mb-10">
-        <p className="font-caveat text-xl mb-1" style={{ color: "#c2185b" }}>
-          discover & explore
-        </p>
-        <h2
-          className="font-playfair text-4xl font-bold"
-          style={{ color: "#6d2b4e" }}
-        >
-          All Book Reviews
-        </h2>
+        <p className="font-caveat text-xl mb-1" style={{ color: "#c2185b" }}>discover & explore</p>
+        <h2 className="font-playfair text-4xl font-bold" style={{ color: "#6d2b4e" }}>All Book Reviews</h2>
       </div>
 
-      {/* Genre filters */}
       <div className="flex flex-wrap gap-3 justify-center mb-8">
         {GENRES.map((g) => (
           <button
@@ -402,10 +405,7 @@ function BrowsePage() {
               background: selectedGenre === g ? "#f48fb1" : "rgba(255,255,255,0.7)",
               color: selectedGenre === g ? "#fff" : "#c2185b",
               border: "1.5px solid #f8bbd0",
-              boxShadow:
-                selectedGenre === g
-                  ? "0 4px 16px rgba(244,143,177,0.4)"
-                  : "none",
+              boxShadow: selectedGenre === g ? "0 4px 16px rgba(244,143,177,0.4)" : "none",
             }}
           >
             {g}
@@ -414,22 +414,14 @@ function BrowsePage() {
       </div>
 
       <div className="flex justify-between items-center mb-8">
-        <p className="font-lato text-sm" style={{ color: "#a06080" }}>
-          {filtered.length} reviews found
-        </p>
+        <p className="font-lato text-sm" style={{ color: "#a06080" }}>{sorted.length} reviews found</p>
         <div className="flex items-center gap-2">
-          <span className="font-lato text-sm" style={{ color: "#a06080" }}>
-            Sort by:
-          </span>
+          <span className="font-lato text-sm" style={{ color: "#a06080" }}>Sort by:</span>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
             className="rounded-xl px-3 py-1.5 text-sm font-lato outline-none"
-            style={{
-              border: "1.5px solid #f8bbd0",
-              background: "rgba(255,255,255,0.8)",
-              color: "#6d2b4e",
-            }}
+            style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.8)", color: "#6d2b4e" }}
           >
             <option value="newest">Newest</option>
             <option value="top">Top Rated</option>
@@ -438,21 +430,22 @@ function BrowsePage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-        {filtered.map((r) => (
-          <ReviewCard key={r.id} review={r} />
-        ))}
-      </div>
+      {loading ? (
+        <div className="text-center py-16 text-4xl animate-float">📖</div>
+      ) : sorted.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">🌸</div>
+          <p className="font-playfair text-xl" style={{ color: "#6d2b4e" }}>No reviews yet — be the first!</p>
+        </div>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+          {sorted.map((r) => <ReviewCard key={r.id} review={r} onDelete={handleDelete} />)}
+        </div>
+      )}
 
-      {/* Write Review */}
       <div className="glass-card rounded-3xl p-8">
         <div className="flex items-center justify-between mb-6">
-          <h3
-            className="font-playfair text-2xl font-semibold"
-            style={{ color: "#6d2b4e" }}
-          >
-            ✍️ Write a Review
-          </h3>
+          <h3 className="font-playfair text-2xl font-semibold" style={{ color: "#6d2b4e" }}>✍️ Write a Review</h3>
           <button
             onClick={() => setShowForm(!showForm)}
             className="px-5 py-2 rounded-full font-lato text-sm font-semibold transition-all hover:scale-105"
@@ -461,70 +454,50 @@ function BrowsePage() {
             {showForm ? "Cancel" : "+ Add Review"}
           </button>
         </div>
+        {!user && showForm && (
+          <p className="font-lato text-sm mb-4" style={{ color: "#c2185b" }}>
+            Please sign in to post a review 💖
+          </p>
+        )}
+        {error && <p className="font-lato text-sm mb-4" style={{ color: "#c2185b" }}>{error}</p>}
         {showForm && (
           <div className="grid md:grid-cols-2 gap-4 animate-fade-in">
             <input
               placeholder="Book title..."
               value={newReview.title}
-              onChange={(e) =>
-                setNewReview({ ...newReview, title: e.target.value })
-              }
+              onChange={(e) => setNewReview({ ...newReview, title: e.target.value })}
               className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full"
-              style={{
-                border: "1.5px solid #f8bbd0",
-                background: "rgba(255,255,255,0.9)",
-                color: "#5d3a4a",
-              }}
+              style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
             />
             <input
               placeholder="Author name..."
               value={newReview.author}
-              onChange={(e) =>
-                setNewReview({ ...newReview, author: e.target.value })
-              }
+              onChange={(e) => setNewReview({ ...newReview, author: e.target.value })}
               className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full"
-              style={{
-                border: "1.5px solid #f8bbd0",
-                background: "rgba(255,255,255,0.9)",
-                color: "#5d3a4a",
-              }}
+              style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
             />
             <div className="md:col-span-2">
               <textarea
                 placeholder="Share your thoughts about this book..."
                 rows={4}
                 value={newReview.text}
-                onChange={(e) =>
-                  setNewReview({ ...newReview, text: e.target.value })
-                }
+                onChange={(e) => setNewReview({ ...newReview, text: e.target.value })}
                 className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full resize-none"
-                style={{
-                  border: "1.5px solid #f8bbd0",
-                  background: "rgba(255,255,255,0.9)",
-                  color: "#5d3a4a",
-                }}
+                style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
               />
             </div>
             <div className="flex items-center gap-3">
-              <span className="font-lato text-sm" style={{ color: "#a06080" }}>
-                Your rating:
-              </span>
-              <StarRating
-                rating={newReview.rating}
-                interactive
-                onRate={(r) => setNewReview({ ...newReview, rating: r })}
-              />
+              <span className="font-lato text-sm" style={{ color: "#a06080" }}>Your rating:</span>
+              <StarRating rating={newReview.rating} interactive onRate={(r) => setNewReview({ ...newReview, rating: r })} />
             </div>
             <div className="flex justify-end">
               <button
+                onClick={handleSubmit}
+                disabled={submitting}
                 className="px-8 py-3 rounded-full font-lato font-semibold text-sm transition-all hover:scale-105"
-                style={{
-                  background: "#c2185b",
-                  color: "#fff",
-                  boxShadow: "0 4px 16px rgba(194,24,91,0.3)",
-                }}
+                style={{ background: "#c2185b", color: "#fff", boxShadow: "0 4px 16px rgba(194,24,91,0.3)", opacity: submitting ? 0.6 : 1 }}
               >
-                Publish Review 💖
+                {submitting ? "Publishing…" : "Publish Review 💖"}
               </button>
             </div>
           </div>
@@ -534,205 +507,200 @@ function BrowsePage() {
   );
 }
 
-function DashboardPage() {
-  const myReviews = SAMPLE_REVIEWS.slice(0, 3);
+function DashboardPage({ setPage }: { setPage: (p: string) => void }) {
+  const { user } = useContext(AuthCtx);
+  const [myReviews, setMyReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) { setLoading(false); return; }
+    fetch(`${REVIEWS_URL}?user_id=${user.user_id}`)
+      .then((r) => r.json())
+      .then((data) => { setMyReviews(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [user]);
+
+  const handleDelete = async (id: number) => {
+    if (!user || !window.confirm("Delete this review? 💔")) return;
+    const res = await fetch(`${REVIEWS_URL}/${id}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${user.token}` },
+    });
+    if (res.ok) setMyReviews((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  if (!user) {
+    return (
+      <div className="max-w-md mx-auto px-6 py-20 text-center">
+        <div className="text-6xl mb-4">🔒</div>
+        <h2 className="font-playfair text-3xl font-bold mb-3" style={{ color: "#6d2b4e" }}>Sign in to view your dashboard</h2>
+        <button
+          onClick={() => setPage("profile")}
+          className="px-8 py-3 rounded-full font-lato font-semibold transition-all hover:scale-105"
+          style={{ background: "#c2185b", color: "#fff" }}
+        >
+          Sign In 💖
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
       <div className="mb-10">
-        <p className="font-caveat text-xl" style={{ color: "#c2185b" }}>
-          your cozy corner
-        </p>
-        <h2
-          className="font-playfair text-4xl font-bold"
-          style={{ color: "#6d2b4e" }}
-        >
-          My Dashboard
-        </h2>
+        <p className="font-caveat text-xl" style={{ color: "#c2185b" }}>your cozy corner</p>
+        <h2 className="font-playfair text-4xl font-bold" style={{ color: "#6d2b4e" }}>My Dashboard</h2>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
         {[
-          { label: "Reviews Written", val: "12", emoji: "📝" },
-          { label: "Books Read", val: "47", emoji: "📚" },
-          { label: "Total Likes", val: "284", emoji: "💖" },
-          { label: "Followers", val: "38", emoji: "🌸" },
+          { label: "Reviews Written", val: String(myReviews.length), emoji: "📝" },
+          { label: "Total Likes", val: String(myReviews.reduce((a, r) => a + r.likes, 0)), emoji: "💖" },
+          { label: "Avg Rating", val: myReviews.length ? (myReviews.reduce((a, r) => a + r.rating, 0) / myReviews.length).toFixed(1) : "—", emoji: "⭐" },
         ].map((s) => (
-          <div
-            key={s.label}
-            className="glass-card rounded-2xl p-5 text-center hover-scale"
-          >
+          <div key={s.label} className="glass-card rounded-2xl p-5 text-center hover-scale">
             <div className="text-3xl mb-2">{s.emoji}</div>
-            <div
-              className="font-playfair text-3xl font-bold"
-              style={{ color: "#c2185b" }}
-            >
-              {s.val}
-            </div>
-            <div className="font-lato text-xs mt-1" style={{ color: "#a06080" }}>
-              {s.label}
-            </div>
+            <div className="font-playfair text-3xl font-bold" style={{ color: "#c2185b" }}>{s.val}</div>
+            <div className="font-lato text-xs mt-1" style={{ color: "#a06080" }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      <div className="glass-card rounded-3xl p-8 mb-6">
-        <div className="flex items-center justify-between mb-6">
-          <h3
-            className="font-playfair text-2xl font-semibold"
-            style={{ color: "#6d2b4e" }}
-          >
-            My Recent Reviews
-          </h3>
-          <button
-            className="text-sm font-lato font-semibold hover:underline"
-            style={{ color: "#c2185b" }}
-          >
-            View all →
-          </button>
-        </div>
-        <div className="flex flex-col gap-4">
-          {myReviews.map((r) => (
-            <div
-              key={r.id}
-              className="flex items-center justify-between p-4 rounded-2xl hover-scale"
-              style={{ background: "#fff5f8" }}
-            >
-              <div>
-                <p
-                  className="font-playfair font-semibold"
-                  style={{ color: "#6d2b4e" }}
-                >
-                  {r.title}
-                </p>
-                <p className="text-xs font-lato" style={{ color: "#a06080" }}>
-                  {r.date} · {r.likes} likes
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <StarRating rating={r.rating} />
-                <button
-                  className="p-2 rounded-xl transition-colors hover:bg-pink-100"
-                  style={{ color: "#c2185b" }}
-                >
-                  <Icon name="Edit2" size={14} />
-                </button>
-                <button
-                  className="p-2 rounded-xl transition-colors hover:bg-pink-100"
-                  style={{ color: "#e57373" }}
-                >
-                  <Icon name="Trash2" size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="glass-card rounded-3xl p-8">
-        <h3
-          className="font-playfair text-2xl font-semibold mb-6"
-          style={{ color: "#6d2b4e" }}
-        >
-          📖 My Reading List
-        </h3>
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            "The Seven Husbands of Evelyn Hugo",
-            "It Ends with Us",
-            "Atomic Habits",
-          ].map((book) => (
-            <div
-              key={book}
-              className="p-4 rounded-2xl flex items-center gap-3 hover-scale cursor-pointer"
-              style={{ background: "#fff5f8", border: "1.5px solid #f8bbd0" }}
+        <h3 className="font-playfair text-2xl font-semibold mb-6" style={{ color: "#6d2b4e" }}>My Reviews</h3>
+        {loading ? (
+          <div className="text-center py-8 text-3xl animate-float">📖</div>
+        ) : myReviews.length === 0 ? (
+          <div className="text-center py-10">
+            <div className="text-5xl mb-3">✍️</div>
+            <p className="font-lato" style={{ color: "#a06080" }}>You haven't written any reviews yet.</p>
+            <button
+              onClick={() => setPage("browse")}
+              className="mt-4 px-6 py-2 rounded-full font-lato text-sm font-semibold"
+              style={{ background: "#fce4ec", color: "#c2185b" }}
             >
-              <span className="text-2xl">📕</span>
-              <span
-                className="font-lato text-sm font-semibold"
-                style={{ color: "#5d3a4a" }}
+              Write your first review →
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {myReviews.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center justify-between p-4 rounded-2xl hover-scale"
+                style={{ background: "#fff5f8" }}
               >
-                {book}
-              </span>
-            </div>
-          ))}
-        </div>
+                <div>
+                  <p className="font-playfair font-semibold" style={{ color: "#6d2b4e" }}>{r.title}</p>
+                  <p className="text-xs font-lato" style={{ color: "#a06080" }}>{r.date} · {r.likes} likes</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StarRating rating={r.rating} />
+                  <button
+                    onClick={() => handleDelete(r.id)}
+                    className="p-2 rounded-xl transition-colors hover:bg-pink-100"
+                    style={{ color: "#e57373" }}
+                    title="Delete review"
+                  >
+                    <Icon name="Trash2" size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function ProfilePage() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { user, setUser } = useContext(AuthCtx);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [form, setForm] = useState({ username: "", email: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [myReviews, setMyReviews] = useState<Review[]>([]);
 
-  if (!isLoggedIn) {
+  useEffect(() => {
+    if (!user) return;
+    fetch(`${REVIEWS_URL}?user_id=${user.user_id}`)
+      .then((r) => r.json())
+      .then(setMyReviews)
+      .catch(() => {});
+  }, [user]);
+
+  const handleAuth = async () => {
+    setError(""); setLoading(true);
+    const path = isSignUp ? "/register" : "/login";
+    const body = isSignUp
+      ? { username: form.username, email: form.email, password: form.password }
+      : { email: form.email, password: form.password };
+    const res = await fetch(`${AUTH_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    setLoading(false);
+    if (res.ok) {
+      setUser(data);
+      localStorage.setItem("brh_user", JSON.stringify(data));
+    } else {
+      setError(data.error || "Something went wrong");
+    }
+  };
+
+  if (!user) {
     return (
       <div className="max-w-md mx-auto px-6 py-20">
         <div className="glass-card rounded-3xl p-10 text-center">
           <div className="text-5xl mb-4">{isSignUp ? "🌸" : "💖"}</div>
-          <h2
-            className="font-playfair text-3xl font-bold mb-2"
-            style={{ color: "#6d2b4e" }}
-          >
+          <h2 className="font-playfair text-3xl font-bold mb-2" style={{ color: "#6d2b4e" }}>
             {isSignUp ? "Create Account" : "Welcome Back"}
           </h2>
           <p className="font-lato text-sm mb-8" style={{ color: "#a06080" }}>
-            {isSignUp
-              ? "Join our cozy reading community"
-              : "Sign in to your reading world"}
+            {isSignUp ? "Join our cozy reading community" : "Sign in to your reading world"}
           </p>
-
+          {error && <p className="font-lato text-sm mb-4" style={{ color: "#c2185b" }}>{error}</p>}
           <div className="flex flex-col gap-4">
             {isSignUp && (
               <input
-                placeholder="Your name..."
+                placeholder="Username..."
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value })}
                 className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full"
-                style={{
-                  border: "1.5px solid #f8bbd0",
-                  background: "rgba(255,255,255,0.9)",
-                  color: "#5d3a4a",
-                }}
+                style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
               />
             )}
             <input
               placeholder="Email address..."
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
               className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full"
-              style={{
-                border: "1.5px solid #f8bbd0",
-                background: "rgba(255,255,255,0.9)",
-                color: "#5d3a4a",
-              }}
+              style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
             />
             <input
               type="password"
               placeholder="Password..."
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              onKeyDown={(e) => e.key === "Enter" && handleAuth()}
               className="rounded-xl px-4 py-3 font-lato text-sm outline-none w-full"
-              style={{
-                border: "1.5px solid #f8bbd0",
-                background: "rgba(255,255,255,0.9)",
-                color: "#5d3a4a",
-              }}
+              style={{ border: "1.5px solid #f8bbd0", background: "rgba(255,255,255,0.9)", color: "#5d3a4a" }}
             />
             <button
-              onClick={() => setIsLoggedIn(true)}
+              onClick={handleAuth}
+              disabled={loading}
               className="w-full py-3 rounded-full font-lato font-bold text-sm transition-all hover:scale-105"
-              style={{
-                background: "#c2185b",
-                color: "#fff",
-                boxShadow: "0 4px 16px rgba(194,24,91,0.3)",
-              }}
+              style={{ background: "#c2185b", color: "#fff", boxShadow: "0 4px 16px rgba(194,24,91,0.3)", opacity: loading ? 0.6 : 1 }}
             >
-              {isSignUp ? "Create Account 🌸" : "Sign In 💖"}
+              {loading ? "Please wait…" : isSignUp ? "Create Account 🌸" : "Sign In 💖"}
             </button>
           </div>
-
           <p className="font-lato text-sm mt-6" style={{ color: "#a06080" }}>
             {isSignUp ? "Already have an account? " : "New here? "}
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="font-semibold hover:underline"
-              style={{ color: "#c2185b" }}
-            >
+            <button onClick={() => { setIsSignUp(!isSignUp); setError(""); }} className="font-semibold hover:underline" style={{ color: "#c2185b" }}>
               {isSignUp ? "Sign In" : "Join the Club"}
             </button>
           </p>
@@ -743,127 +711,54 @@ function ProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12">
-      <div
-        className="glass-card rounded-3xl p-8 mb-8"
-        style={{
-          background: "linear-gradient(135deg, #fce4ec 0%, #fff0f5 100%)",
-        }}
-      >
+      <div className="glass-card rounded-3xl p-8 mb-8" style={{ background: "linear-gradient(135deg, #fce4ec 0%, #fff0f5 100%)" }}>
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
           <div className="text-8xl">🌸</div>
           <div className="flex-1 text-center md:text-left">
-            <h2
-              className="font-playfair text-3xl font-bold mb-1"
-              style={{ color: "#6d2b4e" }}
-            >
-              rosereads
-            </h2>
-            <p className="font-caveat text-lg mb-3" style={{ color: "#c2185b" }}>
-              Passionate reader & hopeless romantic 📚✨
-            </p>
-            <p
-              className="font-lato text-sm mb-4"
-              style={{ color: "#8d5070" }}
-            >
-              I love cozy fantasy, emotional romances, and books that make me
-              cry happy tears. Always looking for my next 5-star read!
-            </p>
+            <h2 className="font-playfair text-3xl font-bold mb-1" style={{ color: "#6d2b4e" }}>@{user.username}</h2>
+            <p className="font-caveat text-lg mb-4" style={{ color: "#c2185b" }}>Passionate reader ✨</p>
             <div className="flex gap-6 justify-center md:justify-start">
               {[
-                ["12", "Reviews"],
-                ["47", "Books Read"],
-                ["38", "Followers"],
+                [String(myReviews.length), "Reviews"],
+                [String(myReviews.reduce((a, r) => a + r.likes, 0)), "Likes"],
               ].map(([n, l]) => (
                 <div key={l} className="text-center">
-                  <div
-                    className="font-playfair font-bold text-xl"
-                    style={{ color: "#c2185b" }}
-                  >
-                    {n}
-                  </div>
-                  <div
-                    className="font-lato text-xs"
-                    style={{ color: "#a06080" }}
-                  >
-                    {l}
-                  </div>
+                  <div className="font-playfair font-bold text-xl" style={{ color: "#c2185b" }}>{n}</div>
+                  <div className="font-lato text-xs" style={{ color: "#a06080" }}>{l}</div>
                 </div>
               ))}
             </div>
           </div>
           <button
+            onClick={() => { setUser(null); localStorage.removeItem("brh_user"); }}
             className="px-5 py-2 rounded-full font-lato text-sm font-semibold transition-all hover:scale-105"
-            style={{ background: "#f48fb1", color: "#fff" }}
+            style={{ background: "#fce4ec", color: "#c2185b" }}
           >
-            Edit Profile
+            Sign Out
           </button>
         </div>
       </div>
 
-      <div className="glass-card rounded-3xl p-8 mb-6">
-        <h3
-          className="font-playfair text-xl font-semibold mb-4"
-          style={{ color: "#6d2b4e" }}
-        >
-          Favourite Genres
-        </h3>
-        <div className="flex flex-wrap gap-3">
-          {[
-            "Romance 💕",
-            "Fantasy ✨",
-            "Fiction 📖",
-            "Historical Fiction 🏰",
-          ].map((g) => (
-            <span
-              key={g}
-              className="px-4 py-2 rounded-full font-lato text-sm font-semibold"
-              style={{
-                background: "#fce4ec",
-                color: "#c2185b",
-                border: "1.5px solid #f8bbd0",
-              }}
-            >
-              {g}
-            </span>
-          ))}
-        </div>
-      </div>
-
       <div className="glass-card rounded-3xl p-8">
-        <h3
-          className="font-playfair text-xl font-semibold mb-6"
-          style={{ color: "#6d2b4e" }}
-        >
-          Reading History
-        </h3>
-        <div className="flex flex-col gap-3">
-          {SAMPLE_REVIEWS.slice(0, 4).map((r) => (
-            <div
-              key={r.id}
-              className="flex items-center justify-between p-4 rounded-2xl hover-scale"
-              style={{ background: "#fff5f8" }}
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">📕</span>
-                <div>
-                  <p
-                    className="font-lato font-semibold text-sm"
-                    style={{ color: "#5d3a4a" }}
-                  >
-                    {r.title}
-                  </p>
-                  <p
-                    className="font-lato text-xs"
-                    style={{ color: "#a06080" }}
-                  >
-                    {r.author}
-                  </p>
+        <h3 className="font-playfair text-xl font-semibold mb-6" style={{ color: "#6d2b4e" }}>My Reviews</h3>
+        {myReviews.length === 0 ? (
+          <p className="font-lato text-sm text-center py-6" style={{ color: "#a06080" }}>No reviews yet — go write one! 📖</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {myReviews.map((r) => (
+              <div key={r.id} className="flex items-center justify-between p-4 rounded-2xl hover-scale" style={{ background: "#fff5f8" }}>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">📕</span>
+                  <div>
+                    <p className="font-lato font-semibold text-sm" style={{ color: "#5d3a4a" }}>{r.title}</p>
+                    <p className="font-lato text-xs" style={{ color: "#a06080" }}>{r.author}</p>
+                  </div>
                 </div>
+                <StarRating rating={r.rating} />
               </div>
-              <StarRating rating={r.rating} />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -871,22 +766,24 @@ function ProfilePage() {
 
 function SearchPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<typeof SAMPLE_REVIEWS>([]);
+  const [results, setResults] = useState<Review[]>([]);
   const [searched, setSearched] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!query.trim()) return;
+    setLoading(true);
+    const all: Review[] = await fetch(REVIEWS_URL).then((r) => r.json()).catch(() => []);
     const q = query.toLowerCase();
-    setResults(
-      SAMPLE_REVIEWS.filter(
-        (r) =>
-          r.title.toLowerCase().includes(q) ||
-          r.author.toLowerCase().includes(q) ||
-          r.genre.toLowerCase().includes(q) ||
-          r.text.toLowerCase().includes(q)
-      )
-    );
+    setResults(all.filter(
+      (r) =>
+        r.title.toLowerCase().includes(q) ||
+        r.author.toLowerCase().includes(q) ||
+        r.genre.toLowerCase().includes(q) ||
+        r.text.toLowerCase().includes(q)
+    ));
     setSearched(true);
+    setLoading(false);
   };
 
   return (
@@ -1157,6 +1054,9 @@ function ContactPage() {
 export default function Index() {
   const [currentPage, setCurrentPage] = useState("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    try { return JSON.parse(localStorage.getItem("brh_user") || "null"); } catch { return null; }
+  });
 
   const renderPage = () => {
     switch (currentPage) {
@@ -1165,7 +1065,7 @@ export default function Index() {
       case "browse":
         return <BrowsePage />;
       case "dashboard":
-        return <DashboardPage />;
+        return <DashboardPage setPage={setCurrentPage} />;
       case "profile":
         return <ProfilePage />;
       case "search":
@@ -1178,6 +1078,7 @@ export default function Index() {
   };
 
   return (
+    <AuthCtx.Provider value={{ user, setUser }}>
     <div
       className="min-h-screen"
       style={{
@@ -1230,13 +1131,13 @@ export default function Index() {
             onClick={() => setCurrentPage("profile")}
             className="hidden md:flex items-center gap-2 px-5 py-2 rounded-full font-lato text-sm font-semibold transition-all hover:scale-105"
             style={{
-              background: "#c2185b",
-              color: "#fff",
+              background: user ? "#fce4ec" : "#c2185b",
+              color: user ? "#c2185b" : "#fff",
               boxShadow: "0 3px 12px rgba(194,24,91,0.25)",
             }}
           >
             <Icon name="User" size={15} />
-            Sign In
+            {user ? `@${user.username}` : "Sign In"}
           </button>
 
           <button
@@ -1317,5 +1218,6 @@ export default function Index() {
         </p>
       </footer>
     </div>
+    </AuthCtx.Provider>
   );
 }

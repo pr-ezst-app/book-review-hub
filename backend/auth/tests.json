@@ -1,0 +1,11 @@
+{
+  "tests": [
+    {
+      "name": "Auth root responds",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 404,
+      "bodyMatcher": "any"
+    }
+  ]
+}
